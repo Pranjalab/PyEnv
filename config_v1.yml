@@ -1,0 +1,13 @@
+# config.yml
+project_paths:
+  - /home/buddy/Project/VoicetoText  # Example: ../my_python_project
+include_folders:
+  - /home/buddy/Project/VoicetoText
+system_type: auto         # 'auto' to let the system detect, or specify 'windows', 'linux-cpu', etc.
+gpu_required: false        # Set to true if your project requires GPU support
+ignore_dirs:
+  - venv                  # Add your virtual environment folder name here
+  - build
+  - dist
+  - .git                  # Ignore git directory
+  - voice_to_text
