@@ -11,3 +11,4 @@ ignore_dirs:
   - dist
   - .git                  # Ignore git directory
   - voice_to_text
+python_version: "3.10"     # Specify the Python version to use, e.g., "3.8", "3.9"

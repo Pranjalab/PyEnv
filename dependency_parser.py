@@ -20,7 +20,8 @@ manual_package_mapping = {
 }
 
 def load_config():
-    with open('config.yml', 'r') as file:
+    """Load the configuration from config.yml."""
+    with open('config_v1.yml', 'r') as file:
         return yaml.safe_load(file)
 
 def is_virtual_env(path):
@@ -29,6 +30,7 @@ def is_virtual_env(path):
             os.path.isdir(os.path.join(path, 'Scripts')))
 
 def find_python_files(paths, include_folders, ignore_dirs):
+    """Find all Python files in the specified project paths and folders, excluding ignored directories."""
     python_files = []
     for path in paths:
         for root, dirs, files in os.walk(path):
@@ -48,6 +50,7 @@ def find_python_files(paths, include_folders, ignore_dirs):
     return python_files
 
 def extract_dependencies(python_files):
+    """Extract all imported modules from the given Python files."""
     dependencies = set()
     for file in python_files:
         with open(file, 'r', encoding='utf-8') as f:
@@ -65,9 +68,12 @@ def extract_dependencies(python_files):
             except SyntaxError as e:
                 logging.warning(f"Syntax error in file {file}: {e}")
     logging.info(f"Extracted {len(dependencies)} dependencies.")
+    logging.info(f"Dependencies: {dependencies}")
+
     return dependencies
 
 def get_standard_lib_modules():
+    """Get a list of standard library modules for the current Python version."""
     standard_lib_modules = set(sys.builtin_module_names)
     if hasattr(sys, 'base_prefix'):
         prefix = sys.base_prefix
@@ -82,6 +88,7 @@ def get_standard_lib_modules():
     return standard_lib_modules
 
 def filter_dependencies(dependencies):
+    """Filter out standard library modules from the extracted dependencies."""
     standard_lib_modules = get_standard_lib_modules()
     filtered_dependencies = set()
     for dep in dependencies:
@@ -106,11 +113,9 @@ def search_pypi_package(module_name):
     client = xmlrpc.client.ServerProxy('https://pypi.org/pypi')
     try:
         search_results = client.search({'name': module_name, 'summary': module_name}, 'or')
-        # Filter results to those that have exact module_name in name
         for result in search_results:
             if module_name.lower() == result['name'].lower():
                 return result['name']
-        # If no exact match, return the first result
         if search_results:
             return search_results[0]['name']
         else:
@@ -123,21 +128,17 @@ def validate_dependencies(dependencies):
     """Attempt to map dependencies to PyPI package names."""
     validated_dependencies = set()
     for dep in dependencies:
-        # Ignore internal modules
         if dep.startswith("_"):
             logging.warning(f"Warning: Ignoring invalid dependency '{dep}'")
             continue
-        # Use manual mapping if available
         if dep in manual_package_mapping:
             package_name = manual_package_mapping[dep]
             validated_dependencies.add(package_name)
             logging.info(f"Using manual mapping for module '{dep}' to package '{package_name}'")
             continue
-        # Check if a package with the module name exists on PyPI
         if check_pypi_package(dep):
             validated_dependencies.add(dep)
         else:
-            # Attempt to search for the package
             package_name = search_pypi_package(dep)
             if package_name and check_pypi_package(package_name):
                 logging.info(f"Mapping module '{dep}' to package '{package_name}'")
@@ -148,9 +149,9 @@ def validate_dependencies(dependencies):
     return validated_dependencies
 
 def detect_system_type(config):
+    """Detect the system type based on the operating system and GPU requirements."""
     sys_type = platform.system().lower()
     if 'linux' in sys_type and config.get('gpu_required'):
-        # Check for NVIDIA GPU
         try:
             result = subprocess.run(['nvidia-smi'], stdout=subprocess.PIPE, stderr=subprocess.PIPE)
             if result.returncode == 0:
@@ -160,7 +161,6 @@ def detect_system_type(config):
         except FileNotFoundError:
             return 'linux-cpu'
     elif sys_type == 'windows' and config.get('gpu_required'):
-        # Check for NVIDIA GPU on Windows
         try:
             result = subprocess.run(['nvidia-smi'], stdout=subprocess.PIPE, stderr=subprocess.PIPE, shell=True)
             if result.returncode == 0:
@@ -172,7 +172,34 @@ def detect_system_type(config):
     else:
         return sys_type
 
+def find_python_executable(python_version):
+    """Check if the specified Python version is available and return its path."""
+    possible_executables = [f"python{python_version}", f"python{python_version.replace('.', '')}"]
+    for executable in possible_executables:
+        try:
+            result = subprocess.run([executable, '--version'], stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+            if result.returncode == 0:
+                return executable
+        except FileNotFoundError:
+            continue
+    return None
+
+def create_virtual_env(python_version):
+    """Create a virtual environment using the specified Python version or fallback to default Python."""
+    python_executable = find_python_executable(python_version)
+    if not python_executable:
+        logging.error(f"Python version {python_version} is not available. Falling back to system default Python.")
+        python_executable = sys.executable  # Use the current Python executable
+    
+    try:
+        subprocess.run([python_executable, '-m', 'venv', 'venv'], check=True)
+        logging.info(f"Virtual environment created with {python_executable}.")
+    except subprocess.CalledProcessError as e:
+        logging.error(f"Failed to create virtual environment: {e}")
+        sys.exit(1)
+
 def adjust_dependencies(dependencies, system_type):
+    """Adjust dependencies based on the system type and specific requirements (e.g., CPU or GPU)."""
     adjusted_deps = set()
     torch_version = ''
     # Adjust torch dependency based on system_type
@@ -217,14 +244,12 @@ def adjust_dependencies(dependencies, system_type):
     return adjusted_deps
 
 def generate_requirements_txt(dependencies):
-    # Create the results directory if it doesn't exist
+    """Generate a requirements.txt file from the validated dependencies."""
     os.makedirs("results", exist_ok=True)
-    
     try:
         with open('results/requirements.txt', 'w') as f:
             for dep in dependencies:
                 if ' -f ' in dep:
-                    # For dependencies with find-links, write in a way pip understands
                     package_part, url_part = dep.split(' -f ')
                     f.write(f"{package_part.strip()} \\\n    --find-links {url_part.strip()}\n")
                 else:
@@ -236,6 +261,9 @@ def generate_requirements_txt(dependencies):
 if __name__ == "__main__":
     # Load configuration from config.yml
     config = load_config()
+
+    # Create a virtual environment with the specified Python version
+    create_virtual_env(config.get('python_version', '3.8'))
 
     # Detect system type and adjust GPU requirements
     system_type = detect_system_type(config)

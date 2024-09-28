@@ -1,17 +1,2 @@
-ultralytics
-opencv-python
-numpy
-deface
-pandas
-mediapipe
-imageio
-onnxruntime
-scikit-image
-tqdm
-facenet_pytorch
-torch==2.0.1+cpu \
-    --find-links https://download.pytorch.org/whl/torch_stable.html
-torchvision==0.15.2+cpu \
-    --find-links https://download.pytorch.org/whl/torch_stable.html
-face_recognition
-onnx
+pyautogui
+pynput
